@@ -20,38 +20,8 @@
       fn.apply(context, args.concat([].slice.call(arguments)))
     };
   }  
-    
-  /////////
-  var stm = {
-    state: 'defined',
-    data: {
-      source: null,
-      result: null
-    },
-    init: function(job){
-      console.log('fn.init()');  
-      this.state = 'initialized';
-    }
-  };
-  
-  //////////  
-  function $fxt( props ){
-    function fni(){ 
-      this.tick.apply(this, [].slice.call(arguments)); 
-    }
-    var keys = Object.keys(props);
-    // console.log(' * keys: ', keys, '(tick in keys): ', ('tick' in props) );
-    
-    if (!('tick' in props))
-      throw new Error(' (!) $fxt: this.tick() is required');
-      
-    for (var i=0; i<keys.length; i++)
-      fni[ keys[i] ] = props[ keys[i] ];
-      
-    return fni;
-  }
-  
 
+  
   var job = {
 
     state: 'defined',
