@@ -19,12 +19,15 @@
     return function(){
       fn.apply(context, args.concat([].slice.call(arguments)))
     };
-  }  
-
+  } 
   
   var job = {
 
     state: 'defined',
+    
+    conf: {
+      maxTicks: 150
+    },
     
     data: {
       source: null,
@@ -36,64 +39,43 @@
       complete: 0,
       tickHead: 0,
       startTime: 0,
-      tickStartTime: 0,
       endTime: 0,
       usedTime: 0
     },
     
-    conf: {
-      timeout: 100
+    run: function(){
+      qex.log('run()');
+      this.state = 'running';
+      if (0 === this.progress.tickHead)
+        this.progress.startTime = Date.now();
+        
+      this.tick();  
     },
     
-    init: function(job){
-      console.log('job.init()');  
-      this.state = 'initialized';
-    },
-    
-    stop: function(){
+    stop: function( reason ){
+      qex.log('stop( * ' + reason + ' * )');
       this.state = 'stopped';
+      var now = Date.now();
+      this.progress.endTime = now;
+      this.progress.usedTime += now - this.progress.startTime;
     },
     
     tick: function(){
       this.data.currentArgs = [].slice.call(arguments);
-/*      
-      this.beforeStep(
-          this.doStep(
-            this.afterStep
-          )
-      );
-*/      
-      this.beforeStep();
+      qex.log('tick() #'+this.progress.tickHead+' state: ', this.state); 
+      if ('stopped' == this.state){
+        qex.log(' * usedTime:'+this.progress.usedTime+'ms');
+        return;
+      }
+
+      var self = this;
+      self.doStep().afterStep();
+      setTimeout(curry(self.tick, self), 0);
 
     },
     
-    beforeStep: function(next) {
-      if ('stopped' == this.state){
-        console.log('beforeStep() :' + this.state);
-        return;
-      }  
-        
-      this.state = 'running';
-      
-      this.progress.tickStartTime = Date.now();
-      
-      if (0 === this.progress.tickHead)
-        this.progress.startTime = this.progress.tickStartTime;
-        
-      console.log('beforeStep() #state:', this.state, ' @ tick #', this.progress.tickHead);
-        
-      // next();  
-      this.doStep();
-    },
-    
     doStep: function(next){
-      console.log('doStep() processing #' + this.progress.tickHead);
-      
-      var err = null, 
-          res = { ok : true };
-          
-      // next(err, res);
-      this.afterStep();
+      return this;
     },
     
     afterStep: function(err, res){
@@ -101,38 +83,59 @@
         throw err;
       this.progress.tickHead++;
       
-      var now = Date.now();
-      this.progress.endTime = now;
-      this.progress.usedTime += now - this.progress.tickStartTime;
-      
-      console.log('afterStep() #state:', this.state, ' @ tick #', this.progress.tickHead);
-      
-      // dirty
-      this.loopback();
-    },
-    
-    loopback: function() {
-      if (this.progress.tickHead > 25000)
-        this.stop();
+      if (this.progress.tickHead > this.conf.maxTicks)
+        this.stop('tick limit reached');
         
-      this.tick();  
+      return this;
     }
     
   };
   
-  function fnx(){ 
-    this.tick.apply(this, [].slice.call(arguments)); 
-  }    
-  
-  var app = {
+  var qex = {
+    conf: {
+      jobTimeout: 50,
+      leapTimeout: 20,
+      leapCount: 0,
+      maxLeaps: 8
+    },
+    
+    logs: [],
+    log: function(){
+      var record = [].slice.call(arguments).join('; ');
+      qex.logs.push(record);
+    },
+    echo: function(){
+      var dt = new Date(), 
+          stamp = (dt.getSeconds()+'.'+dt.getMilliseconds());
+      console.log(' * '+ stamp +':\n', qex.logs.join('\n'), '\n=======================================' );
+    },  
+    
     init: function() {
-      console.log(' * app.init() ');
+      this.job = job;
+      this.exec('run from init');
+    },
+    
+    exec: function( reason ){
+      qex.log(' * qex.exec( *' + reason + '* )  ');
+      this.job.run();
+      setTimeout(curry(qex.rest, qex), qex.conf.jobTimeout, ['job timeout!']);
+    },
+    
+    rest : function(reason) {
+      this.job.stop(reason);
+      qex.nextLeap( curry(qex.exec, qex) );
+    },
+    
+    // process.nextTick analogue
+    nextLeap: function(callback) {
+      qex.log(' * qex.nextLeap() ');
       
-      // var fn = self.fn = $fxt( job );
-      var fn = self.fn = curry(fnx, job);
-      
-      fn();
-      var tm = setTimeout(fn, 100);
-      
+      if (++qex.conf.leapCount < qex.conf.maxLeaps)
+        setTimeout(callback, qex.conf.leapTimeout, ['nextLeap timeout!']);
+      else 
+        qex.end();
+    },
+    end: function() {
+      qex.echo();
     }
   }
